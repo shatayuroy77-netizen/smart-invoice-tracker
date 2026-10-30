@@ -1,0 +1,215 @@
+{
+  "thermal-receipt.jpg": {
+    "vendor_contains": [
+      "MAA TARA"
+    ],
+    "invoice_number": "4587",
+    "invoice_date": "2026-10-29",
+    "total_amount": 1245.0,
+    "subtotal": 1186.0,
+    "cgst": 29.65,
+    "sgst": 29.65,
+    "igst": 0.0,
+    "lines": [
+      {
+        "qty": 4,
+        "unit_price": 62.0
+      },
+      {
+        "qty": 6,
+        "unit_price": 38.0
+      },
+      {
+        "qty": 2,
+        "unit_price": 215.0
+      },
+      {
+        "qty": 10,
+        "unit_price": 28.0
+      }
+    ]
+  },
+  "tax-inclusive.jpg": {
+    "vendor_contains": [
+      "NEW BENGAL"
+    ],
+    "invoice_number": "NBD-2210",
+    "invoice_date": "2026-10-27",
+    "total_amount": 3360.0,
+    "subtotal": 3000.0,
+    "cgst": 180.0,
+    "sgst": 180.0,
+    "igst": 0.0,
+    "lines": [
+      {
+        "qty": 12,
+        "unit_price": null
+      },
+      {
+        "qty": 20,
+        "unit_price": null
+      },
+      {
+        "qty": 10,
+        "unit_price": null
+      }
+    ]
+  },
+  "multi-gst-rates.jpg": {
+    "vendor_contains": [
+      "KOLKATA FMCG"
+    ],
+    "invoice_number": "KFW/26-27/3305",
+    "invoice_date": "2026-10-25",
+    "total_amount": 38568.0,
+    "subtotal": 35400.0,
+    "cgst": 1584.0,
+    "sgst": 1584.0,
+    "igst": 0.0,
+    "lines": [
+      {
+        "qty": 10,
+        "unit_price": 1800.0
+      },
+      {
+        "qty": 24,
+        "unit_price": 600.0
+      },
+      {
+        "qty": 20,
+        "unit_price": 150.0
+      }
+    ]
+  },
+  "discount-roundoff.jpg": {
+    "vendor_contains": [
+      "SONAR TRADE"
+    ],
+    "invoice_number": "STL-0771",
+    "invoice_date": "2026-10-24",
+    "total_amount": 40580.0,
+    "subtotal": 38648.0,
+    "cgst": 966.2,
+    "sgst": 966.2,
+    "igst": 0.0,
+    "lines": [
+      {
+        "qty": 20,
+        "unit_price": 380.0
+      },
+      {
+        "qty": 8,
+        "unit_price": 2156.0
+      },
+      {
+        "qty": 6,
+        "unit_price": 2300.0
+      }
+    ]
+  },
+  "handwritten-style.jpg": {
+    "vendor_contains": [
+      "MAHESH"
+    ],
+    "invoice_number": "23",
+    "invoice_date": "2026-10-28",
+    "total_amount": 2400.0,
+    "subtotal": null,
+    "cgst": 0.0,
+    "sgst": 0.0,
+    "igst": 0.0,
+    "lines": [
+      {
+        "qty": 4,
+        "unit_price": 300.0
+      },
+      {
+        "qty": 6,
+        "unit_price": 120.0
+      },
+      {
+        "qty": 3,
+        "unit_price": 160.0
+      }
+    ]
+  },
+  "phone-photo.jpg": {
+    "vendor_contains": [
+      "SRI LAKSHMI"
+    ],
+    "invoice_number": "SLT/2026/1042",
+    "invoice_date": "2026-10-28",
+    "total_amount": 71610.0,
+    "subtotal": 68200.0,
+    "cgst": 1705.0,
+    "sgst": 1705.0,
+    "igst": 0.0,
+    "lines": [
+      {
+        "qty": 10,
+        "unit_price": 1850.0
+      },
+      {
+        "qty": 6,
+        "unit_price": 2100.0
+      },
+      {
+        "qty": 8,
+        "unit_price": 3200.0
+      },
+      {
+        "qty": 5,
+        "unit_price": 2300.0
+      }
+    ]
+  },
+  "igst-einvoice.jpg": {
+    "vendor_contains": [
+      "DELHI TECH"
+    ],
+    "invoice_number": "EI/26-27/0098",
+    "invoice_date": "2026-10-26",
+    "total_amount": 34515.0,
+    "subtotal": 29250.0,
+    "cgst": 0.0,
+    "sgst": 0.0,
+    "igst": 5265.0,
+    "lines": [
+      {
+        "qty": 10,
+        "unit_price": 1200.0
+      },
+      {
+        "qty": 25,
+        "unit_price": 450.0
+      },
+      {
+        "qty": 50,
+        "unit_price": 120.0
+      }
+    ]
+  },
+  "bilingual.png": {
+    "vendor_contains": [
+      "GANESH",
+      "গণেশ"
+    ],
+    "invoice_number": "SGT/1187",
+    "invoice_date": "2026-10-27",
+    "total_amount": 9555.0,
+    "subtotal": 9100.0,
+    "cgst": 227.5,
+    "sgst": 227.5,
+    "igst": 0.0,
+    "lines": [
+      {
+        "qty": 20,
+        "unit_price": 165.0
+      },
+      {
+        "qty": 4,
+        "unit_price": 1450.0
+      }
+    ]
+  }
+}

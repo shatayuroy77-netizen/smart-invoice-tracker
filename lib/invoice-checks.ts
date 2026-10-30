@@ -41,7 +41,7 @@ export interface CleanInvoice {
   line_items: {
     item_name: string;
     quantity: number | null;
-    unit: string | null;
+    unit: string; // never empty: DEFAULT_UNIT is used when the invoice shows no unit
     unit_price: number | null;
     line_total: number | null;
   }[];
@@ -62,6 +62,10 @@ export interface Warning {
 // 2 digits + 5 letters + 4 digits + 1 letter + 1 (1-9 or letter) + 'Z' + 1 (digit or letter).
 // Same rule as the v_flag_bad_gstin view in the database.
 export const GSTIN_PATTERN = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
+
+// Many invoices (and almost every AI-made sample) have no separate unit column. That must not stop
+// staff from saving, so a missing unit becomes this one, with a "please check" warning.
+export const DEFAULT_UNIT = 'pcs';
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
@@ -91,12 +95,11 @@ export function checkInvoice(
 
   // ---- text fields ------------------------------------------------------
   const vendor_name = raw.vendor_name?.trim() || null;
-  const invoice_number = raw.invoice_number?.trim() || null;
+  let invoice_number = raw.invoice_number?.trim() || null; // may be filled in near the end, see "no invoice number"
   // GSTIN: capitals and no spaces. We do NOT "fix" characters: a wrong GSTIN must stay visible.
   const vendor_gstin = raw.vendor_gstin ? raw.vendor_gstin.replace(/\s+/g, '').toUpperCase() : null;
 
   if (!vendor_name) warnings.push({ severity: 'error', field: 'vendor_name', message: 'Vendor name was not found. Please type it.' });
-  if (!invoice_number) warnings.push({ severity: 'error', field: 'invoice_number', message: 'Invoice number was not found. Please type it.' });
 
   if (vendor_gstin && !GSTIN_PATTERN.test(vendor_gstin)) {
     warnings.push({
@@ -153,7 +156,7 @@ export function checkInvoice(
   const line_items = raw.line_items.map((li) => ({
     item_name: li.item_name.trim(),
     quantity: li.quantity,
-    unit: li.unit?.trim().toLowerCase() || null,
+    unit: li.unit?.trim().toLowerCase() || DEFAULT_UNIT,
     unit_price: li.unit_price != null ? round2(li.unit_price) : null,
     line_total: li.line_total != null ? round2(li.line_total) : null,
   }));
@@ -168,7 +171,14 @@ export function checkInvoice(
     if (li.quantity == null || li.quantity <= 0) {
       warnings.push({ severity: 'error', field, message: `Line ${i + 1} (${li.item_name}): quantity is missing.` });
     }
-    if (!li.unit) warnings.push({ severity: 'error', field, message: `Line ${i + 1} (${li.item_name}): unit (kg, pcs, box...) is missing. Please type it.` });
+    if (!raw.line_items[i].unit?.trim()) {
+      // only a warning: the line is saved with the default unit, and staff can type kg, box, bag... if they know it
+      warnings.push({
+        severity: 'warn',
+        field,
+        message: `Line ${i + 1} (${li.item_name}): no unit is shown on the invoice, so "${DEFAULT_UNIT}" will be used. Change it if it is kg, box, bag...`,
+      });
+    }
     if (li.unit_price == null) {
       warnings.push({ severity: 'error', field, message: `Line ${i + 1} (${li.item_name}): price is missing.` });
     }
@@ -231,6 +241,23 @@ export function checkInvoice(
         field: 'total_amount',
         message: `Sub total ${subtotal} + taxes ${round2(cgst + sgst + igst)} = ${expectedTotal}, but the invoice total says ${total_amount}. A number may be misread.`,
       });
+    }
+  }
+
+  // ---- no invoice number ------------------------------------------------
+  // Many small shops hand out cash memos without a number. That must not stop staff from saving, so a
+  // reference is made from the date and the total. Two memos with the same date and total from the same
+  // vendor get the same reference, so the duplicate check still catches them.
+  if (!invoice_number) {
+    if (invoice_date && total_amount != null) {
+      invoice_number = `NO-NUMBER-${invoice_date}-${total_amount}`;
+      warnings.push({
+        severity: 'warn',
+        field: 'invoice_number',
+        message: `No invoice number is printed, so "${invoice_number}" will be used as the reference. Type the real number if you know it.`,
+      });
+    } else {
+      warnings.push({ severity: 'error', field: 'invoice_number', message: 'Invoice number was not found. Please type it.' });
     }
   }
 

@@ -29,7 +29,9 @@ check('scan reads the invoice', scan.ok === true, `vendor=${scan.invoice?.vendor
 if (!scan.ok) process.exit(1);
 
 // Make the invoice number unique so it cannot collide with data that is already saved.
-const testNumber = `TEST-${Date.now()}`;
+// With KEEP_NUMBER=1 the number the scan returned is kept (used to test invoices that have no number:
+// the checks then make a "NO-NUMBER-date-total" reference).
+const testNumber = process.env.KEEP_NUMBER ? scan.invoice.invoice_number : `TEST-${Date.now()}`;
 const payload = { ...scan.invoice, invoice_number: testNumber, allow_duplicate: false };
 delete payload.due_date_source;
 

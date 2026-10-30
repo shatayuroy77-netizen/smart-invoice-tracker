@@ -127,6 +127,41 @@ test('missing due date and missing terms: asks to use the vendor credit days', (
   assert.ok(fields(warnings).includes('due_date'));
 });
 
+test('an invoice with no unit column can still be saved: unit becomes "pcs" with a warning, not an error', () => {
+  const inv = base('invoice-A-clean.jpg');
+  for (const li of inv.line_items) li.unit = null;
+  inv.line_items[0].unit = '   '; // spaces only counts as "no unit" too
+  const { invoice, warnings } = checkInvoice(inv, { today: TODAY });
+  assert.ok(invoice.line_items.every((li) => li.unit === 'pcs'), 'every line gets the default unit');
+  assert.equal(fields(warnings, 'error').length, 0, 'no error, so Save stays possible');
+  assert.equal(warnings.filter((w) => w.severity === 'warn' && w.message.includes('no unit is shown')).length, invoice.line_items.length);
+});
+
+test('a cash memo with no invoice number can still be saved: a reference is made from date and total', () => {
+  const inv = base('invoice-A-clean.jpg');
+  inv.invoice_number = null;
+  const { invoice, warnings } = checkInvoice(inv, { today: TODAY });
+  assert.equal(invoice.invoice_number, `NO-NUMBER-${invoice.invoice_date}-${invoice.total_amount}`);
+  assert.equal(fields(warnings, 'error').length, 0, 'no error, so Save stays possible');
+  assert.ok(warnings.some((w) => w.severity === 'warn' && w.field === 'invoice_number'));
+});
+
+test('no invoice number AND no date is still an error (there is nothing to build a reference from)', () => {
+  const inv = base('invoice-A-clean.jpg');
+  inv.invoice_number = null;
+  inv.invoice_date = null;
+  const { warnings } = checkInvoice(inv, { today: TODAY });
+  assert.ok(warnings.some((w) => w.severity === 'error' && w.field === 'invoice_number'));
+});
+
+test('a unit that is printed is kept (lower-cased) and gets no warning', () => {
+  const inv = base('invoice-A-clean.jpg');
+  inv.line_items[0].unit = ' KG ';
+  const { invoice, warnings } = checkInvoice(inv, { today: TODAY });
+  assert.equal(invoice.line_items[0].unit, 'kg');
+  assert.ok(!warnings.some((w) => w.field === 'line_items[0]' && w.message.includes('no unit')));
+});
+
 test("the AI's own 'unclear_fields' are passed on", () => {
   const raw = base('invoice-A-clean.jpg');
   raw.unclear_fields = ['vendor_gstin'];

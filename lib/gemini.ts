@@ -10,11 +10,10 @@ const DEFAULT_FALLBACK_MODEL = 'gemini-3.8-flash';
 // An error with a status code and a message that is safe to show to the user.
 // The technical details (never the API key) are only written to the server log.
 export class GeminiError extends Error {
-  constructor(
-    public status: number,
-    message: string,
-  ) {
+  status: number;
+  constructor(status: number, message: string) {
     super(message);
+    this.status = status;
   }
 }
 
@@ -127,6 +126,13 @@ LINE ITEMS
 unclear_fields: list the names of any fields you are not sure about because of blur, shadow, folds or handwriting (for example "vendor_gstin" or "line_items[2].quantity"). Use an empty list if you are confident.`;
 
 // ---- The call ---------------------------------------------------------------------
+// The free Gemini key allows only a small number of photos per DAY and per model (about 20 at the time of
+// writing). When Google says a model's daily limit is used up, that model is skipped until Google says it
+// is free again, so the next scans fail at once with the real reason instead of waiting 40 seconds.
+const blockedUntil = new Map<string, number>();
+const DAILY_LIMIT_MESSAGE =
+  'The free AI limit for today is used up, so photos cannot be read right now. It resets by tomorrow around midday (India time). Until then you can type the invoice in yourself.';
+
 export async function extractInvoiceFromImage(image: { base64: string; mimeType: string }): Promise<RawInvoice> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -139,9 +145,14 @@ export async function extractInvoiceFromImage(image: { base64: string; mimeType:
 
   let response: Response | null = null;
   let lastError: GeminiError | null = null;
+  let quotaError: GeminiError | null = null; // "daily limit used up": the most useful reason to show, so it wins at the end
   const deadline = Date.now() + 55_000; // the whole scan must finish inside the 60 s server limit
 
   for (const model of models) {
+    if ((blockedUntil.get(model) ?? 0) > Date.now()) {
+      quotaError = new GeminiError(429, DAILY_LIMIT_MESSAGE);
+      continue; // known to be used up for today: do not even ask
+    }
     for (let attempt = 1; attempt <= 2; attempt++) {
       const timeLeft = deadline - Date.now();
       if (timeLeft < 5_000) break;
@@ -196,7 +207,14 @@ export async function extractInvoiceFromImage(image: { base64: string; mimeType:
         break;
       }
       if (res.status === 429) {
-        lastError = new GeminiError(429, 'The free AI limit was reached. Please wait a minute and try again.');
+        if (/PerDay/i.test(detail)) {
+          // the DAILY limit: asking again today cannot work. Remember it until Google says it is free again.
+          const seconds = Number(/"retryDelay":\s*"(\d+)s"/.exec(detail)?.[1]);
+          blockedUntil.set(model, Date.now() + (seconds > 0 ? seconds * 1000 : 6 * 3_600_000));
+          quotaError = new GeminiError(429, DAILY_LIMIT_MESSAGE);
+        } else {
+          lastError = new GeminiError(429, 'The free AI limit was reached. Please wait a minute and try again.');
+        }
         break;
       }
 
@@ -207,7 +225,7 @@ export async function extractInvoiceFromImage(image: { base64: string; mimeType:
     if (response) break;
   }
 
-  if (!response) throw lastError ?? new GeminiError(502, 'The AI service had a problem. Please try again.');
+  if (!response) throw quotaError ?? lastError ?? new GeminiError(502, 'The AI service had a problem. Please try again.');
 
   const data = await response.json();
   const candidate = data?.candidates?.[0];

@@ -3,7 +3,7 @@
 // The Scan tab: photo -> AI reads it -> staff checks and fixes the fields -> Save.
 import Link from 'next/link';
 import { useMemo, useRef, useState } from 'react';
-import { checkInvoice, type CleanInvoice, type RawInvoice, type Warning } from '@/lib/invoice-checks';
+import { checkInvoice, DEFAULT_UNIT, type CleanInvoice, type RawInvoice, type Warning } from '@/lib/invoice-checks';
 import { formatDate, formatINR, parseDMY } from '@/lib/format';
 import { shrinkImage } from '@/lib/shrink-image';
 import { btn, Card, ErrorBox, Loading } from './ui';
@@ -92,6 +92,25 @@ function formFromScan(invoice: CleanInvoice, warnings: Warning[]): Form {
   };
 }
 
+// A blank form, for typing an invoice in by hand (when the AI is not available or cannot read the paper).
+function emptyForm(): Form {
+  return {
+    vendor_name: '',
+    vendor_gstin: '',
+    invoice_number: '',
+    invoice_date: '',
+    due_date: '',
+    dueNote: '',
+    terms: null,
+    lines: [{ id: crypto.randomUUID(), name: '', qty: '', unit: '', price: '', total: '' }],
+    subtotal: '',
+    cgst: '',
+    sgst: '',
+    igst: '',
+    total: '',
+  };
+}
+
 function toRaw(form: Form): RawInvoice {
   return {
     vendor_name: form.vendor_name || null,
@@ -162,13 +181,14 @@ function Field(props: {
   );
 }
 
-function MiniField(props: { label: string; value: string; onChange: (v: string) => void; inputMode?: 'decimal' | 'text'; flagged?: boolean }) {
+function MiniField(props: { label: string; value: string; onChange: (v: string) => void; inputMode?: 'decimal' | 'text'; flagged?: boolean; placeholder?: string }) {
   return (
     <label className="block min-w-0">
       <span className="mb-1 block text-xs font-medium text-slate-600">{props.label}</span>
       <input
         value={props.value}
         onChange={(e) => props.onChange(e.target.value)}
+        placeholder={props.placeholder}
         inputMode={props.inputMode}
         autoComplete="off"
         className={`min-h-11 w-full min-w-0 rounded-lg border px-2 outline-none focus:ring-2 focus:ring-teal-600 ${
@@ -250,6 +270,18 @@ export function ScanScreen() {
     }
   }
 
+  // No photo, no AI: the staff member types the invoice in. The same checks and the same Save are used.
+  function startManual() {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setError(null);
+    setPhoto(null);
+    setPreviewUrl(null);
+    setAiNotes([]);
+    setDuplicates(null);
+    setForm(emptyForm());
+    setStage('review');
+  }
+
   async function loadSample(url: string, name: string) {
     try {
       const blob = await (await fetch(url)).blob();
@@ -301,7 +333,7 @@ export function ScanScreen() {
 
   async function save(allowDuplicate: boolean) {
     const invoice = checked?.invoice;
-    if (!invoice || errorCount > 0 || !photo) return;
+    if (!invoice || errorCount > 0) return;
     setError(null);
     setDuplicates(null);
     setStage('saving');
@@ -323,7 +355,7 @@ export function ScanScreen() {
     };
     const body = new FormData();
     body.append('data', JSON.stringify(payload));
-    body.append('image', photo);
+    if (photo) body.append('image', photo); // an invoice typed in by hand has no photo
 
     try {
       const res = await fetch('/api/invoices', { method: 'POST', body });
@@ -390,6 +422,9 @@ export function ScanScreen() {
             <button className={btn('secondary', true)} onClick={() => galleryRef.current?.click()}>
               Choose from gallery
             </button>
+            <button className={btn('ghost', true)} onClick={startManual}>
+              Type it myself (no photo)
+            </button>
           </div>
         </Card>
         <Card>
@@ -448,7 +483,9 @@ export function ScanScreen() {
   // ---- review (and saving) ----
   if (!form) return null;
   const saving = stage === 'saving';
-  const globalNotes = [...(byField.get('line_items') ?? []), ...(byField.get('unclear_fields') ?? [])];
+  const globalNotes = [...(byField.get('line_items') ?? []), ...(byField.get('unclear_fields') ?? [])].filter((w) => w.severity !== 'error');
+  // Everything that blocks Save, listed at the top, so staff never have to hunt for the reason
+  const blocking = warnings.filter((w) => w.severity === 'error');
 
   return (
     <div className="space-y-4">
@@ -462,7 +499,14 @@ export function ScanScreen() {
           {errorCount > 0 && warnCount > 0 && ' · '}
           {warnCount > 0 && `${warnCount} to double-check`}
         </p>
-        <p className="mt-1 text-sm text-slate-700">The AI can misread numbers. Compare each field with the photo.</p>
+        <p className="mt-1 text-sm text-slate-700">
+          {previewUrl ? 'The AI can misread numbers. Compare each field with the photo.' : 'Type the details from the paper invoice. No photo is saved with it.'}
+        </p>
+        {blocking.map((w, i) => (
+          <p key={`b${i}`} className="mt-2 text-sm font-medium text-red-800">
+            • {w.message}
+          </p>
+        ))}
         {globalNotes.map((w, i) => (
           <p key={i} className="mt-2 text-sm text-slate-800">
             • {w.message}
@@ -564,7 +608,7 @@ export function ScanScreen() {
               </div>
               <div className="mt-2 grid grid-cols-[1fr_1fr_1.3fr_1.4fr] gap-2">
                 <MiniField label="Qty" value={line.qty} onChange={(v) => updateLine(i, { qty: v })} inputMode="decimal" />
-                <MiniField label="Unit" value={line.unit} onChange={(v) => updateLine(i, { unit: v })} flagged={!line.unit} />
+                <MiniField label="Unit" value={line.unit} onChange={(v) => updateLine(i, { unit: v })} flagged={!line.unit} placeholder={DEFAULT_UNIT} />
                 <MiniField label="Price ₹" value={line.price} onChange={(v) => updateLine(i, { price: v })} inputMode="decimal" />
                 <MiniField label="Amount ₹" value={line.total} onChange={(v) => updateLine(i, { total: v })} inputMode="decimal" />
               </div>

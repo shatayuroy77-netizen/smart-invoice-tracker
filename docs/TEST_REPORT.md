@@ -14,6 +14,8 @@ Supabase project with fake data only. Date of the run: 2026-10-30.
 | Save flow end to end (scan, save, duplicate, photo, mark paid, undo, clean up) | `node --env-file=.env.local scripts/test-save.mjs` |
 | Wrong and hostile input on every API route | `node scripts/test-api-errors.mjs` (add `--rate-limit` to test the scan limit) |
 | Supplier scorecard and weekly cash flow add up with the older views | `node scripts/test-analysis.mjs` |
+| How the app reacts when Gemini says "limit used up" or "busy" (fake Google, no quota used) | `node scripts/test-gemini-errors.ts` |
+| Eight differently styled invoices compared with the right answers (uses the daily AI limit, 8 reads) | `node scripts/test-variety.mjs` |
 
 The last four need the server running (`npm run dev` or `npm run start`).
 
@@ -72,6 +74,55 @@ most, who charges more than the others), one line per supplier, with the details
    turns a firewall refusal into a polite HTTP 400.
 2. **"Mark as paid" for an invoice that does not exist said "already marked as paid".**
    Fix: it now answers 404 "Invoice not found.", and 409 is kept for a real repeat.
+
+## Found by real use after launch: invoices without a unit column or a number (2026-10-30)
+
+The owner tried an invoice made by an AI chat assistant and could not save it. The server log showed that the
+scan itself worked (HTTP 200) but no save request followed, and a rebuilt test invoice reproduced it: every field
+was read correctly, yet **Save stayed disabled** because a missing unit (kg, pcs, box) was treated as an error on
+every line. The first test invoices all had a unit column, so this was never exercised.
+
+- **Fix 1:** a missing unit is now a warning and "pcs" is used (staff can type kg, box, bag...).
+- **Fix 2:** a missing invoice number is a warning too, and a reference `NO-NUMBER-<date>-<total>` is made. Two memos
+  from one vendor with the same date and total get the same reference, so the duplicate check still works.
+- **Fix 3:** every reason that blocks Save is now listed at the top of the review form (before, only a short line at
+  the very bottom said "Fix the red fields to save").
+- What still blocks Save (these cannot be guessed): vendor name, invoice date, total, and for each item a name, a
+  quantity and a price. Missing GSTIN, due date, taxes and sub total are only warnings.
+- Checked with two made-up bills: a typical GST invoice with no unit column, and a plain cash memo with no GSTIN,
+  tax, number or payment terms. Both now go from scan to save. 19 / 19 unit tests, and all older checks pass again.
+
+Lesson: a test that always has every field filled in does not show how the app behaves with real, messy invoices.
+
+## Variety test and the AI's daily limit (2026-10-30)
+
+Eight made-up invoices in very different styles (`test-invoices/variety/`, made by `scripts/make-variety-invoices.py`,
+checked by `node scripts/test-variety.mjs` against `expected.json`): a thermal receipt with a 2-digit year and a
+round-off line, prices that include GST with a date like 27-Oct-2026, a bill with 5%, 12% and 18% lines, a discount
+column with round-off, a handwriting-like bill on ruled paper, a tilted and blurred phone photo, an IGST e-invoice with a
+long IRN code and a QR block, and a Bengali + Hindi + English bill (PNG).
+
+| Result | Invoices |
+|---|---|
+| Scanned and read **completely right** (vendor, number, date, total, taxes, every quantity and price) | thermal receipt, tax-inclusive, discount + round-off, Bengali/Hindi/English: 4 of 4 that ran |
+| **Not scanned yet**, because the daily AI limit ran out | multi-GST-rates, handwriting-like, tilted phone photo, IGST e-invoice |
+
+**Why the other four did not run:** the free Gemini key allows only **20 photo reads per day per model**
+(`GenerateRequestsPerDayPerProjectPerModel-FreeTier`). The day's testing (including these runs) used all of them, and
+the backup model was busy (HTTP 503). The limit resets around 12:30 pm India time. The other four are to be run then;
+this report will be updated with their results.
+
+Things this showed, and what was changed:
+
+1. **The app told the wrong story.** With the daily limit used up, the first model answered 429 and the backup answered
+   slowly, so the screen said "the AI did not answer in time". Now the real reason is told ("the free AI limit for today
+   is used up ... you can type the invoice in yourself"), and a model whose daily limit is used up is not asked again
+   until Google says it is free. Checked with a fake Google (`scripts/test-gemini-errors.ts`, 5 / 5), which uses no quota.
+2. **Scanning must not be the only way in.** A "Type it myself (no photo)" button opens the same review form empty.
+   Checked in a real browser: filled the form, left the invoice number empty (reference made), saved, opened the
+   invoice page, removed the test data again.
+3. **Every test that scans uses the same free limit as the live app.** The live demo can therefore only read about 20
+   photos a day in total. For real use a paid key is needed.
 
 ## Known limits (not bugs)
 

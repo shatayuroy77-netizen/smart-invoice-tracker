@@ -34,7 +34,7 @@ the same invoice paid twice, forgotten due dates, and no view of how supplier pr
 
 | Screen | What you get |
 |---|---|
-| **Scan** | Photo of an invoice becomes vendor, GSTIN, invoice number, dates, line items, CGST / SGST / IGST and total. Staff check the fields and press Save. |
+| **Scan** | Photo of an invoice becomes vendor, GSTIN, invoice number, dates, line items, CGST / SGST / IGST and total. Staff check the fields and press Save. If the AI is not available, or cannot read the paper, the invoice can be typed in by hand with the same checks. |
 | **Invoices** | Searchable list with filters: All, Unpaid, Overdue, Paid, Flagged. Open one to see items, taxes, warnings and the original photo. |
 | **Payments** | What is overdue and what falls due in the next 7, 15 and 30 days, a week-by-week cash-flow chart for the next 8 weeks (with a running total), and one tap to mark an invoice as paid, with undo. |
 | **Prices** | Price alerts, a **supplier scorecard** (who keeps raising prices, who charges more than the others), a vendor-by-vendor comparison for any item, and a price-over-time chart. |
@@ -112,9 +112,12 @@ node scripts/test-scan.mjs             # AI reads two sample invoices, compared 
 node --env-file=.env.local scripts/test-save.mjs   # scan, save, duplicate, photo, mark paid, undo
 node scripts/test-api-errors.mjs       # wrong and hostile input on every API route
 node scripts/test-analysis.mjs         # the cash-flow weeks and the supplier scorecard add up with the older views
+node scripts/test-gemini-errors.ts     # how the app reacts to Gemini limit / busy answers (fake Google, no quota used)
+node scripts/test-variety.mjs          # 8 differently styled invoices compared with the right answers (8 AI reads)
 ```
 
-The last four need the app running (`npm run dev`).
+The tests that talk to the app need it running (`npm run dev`). Every AI read counts against the Gemini key's free
+daily limit, so run `test-scan`, `test-save` and `test-variety` sparingly.
 
 ## Run it yourself
 
@@ -139,7 +142,7 @@ lib/            Gemini client, invoice checks, validation, formatting, server he
 database/       SQL: tables, fake data, views, save function
 scripts/        tests
 docs/           test report and screenshots
-test-invoices/  two made-up invoice images with the expected answers
+test-invoices/  made-up invoice images with the expected answers (two originals, and variety/ with eight styles)
 ```
 
 ## Known limits and next steps
@@ -148,6 +151,13 @@ test-invoices/  two made-up invoice images with the expected answers
 - The scan rate limit is kept in each server instance's memory, so it is a guard against accidents
   and cheap abuse, not a hard limit.
 - Only paid / unpaid is tracked, no partial payments.
+- Fields the AI cannot find: a missing unit becomes "pcs" and a missing invoice number becomes a `NO-NUMBER-date-total`
+  reference, both with a warning. A missing vendor name, invoice date, total, or an item's name, quantity or price
+  must be typed before saving. Missing GSTIN, due date, taxes and sub total are only warnings.
+- The AI was tested on made-up invoices only, not on real, handwritten or blurred shop bills.
+- **The free Gemini key allows only about 20 photo reads per day per model.** The live demo shares that limit
+  between all visitors. When it is used up, the Scan screen says so and invoices can still be typed in by hand.
+  For real use, use a paid key.
 - The supplier scorecard compares prices by cleaned item name, so "Sugar 1kg" and "Sugar (1 kg)" are two items.
   It does not adjust for inflation or convert units.
 - Not built yet: matching the invoices against the GST portal's GSTR-2B file (input tax credit at risk).
