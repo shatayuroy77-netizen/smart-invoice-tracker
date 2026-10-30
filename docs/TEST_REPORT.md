@@ -94,6 +94,10 @@ every line. The first test invoices all had a unit column, so this was never exe
 
 Lesson: a test that always has every field filled in does not show how the app behaves with real, messy invoices.
 
+The wrong-input checks were also run against the **live Vercel site** (not only locally). One difference: a 5 MB upload is
+refused by Vercel itself (HTTP 413, plain text, `FUNCTION_PAYLOAD_TOO_LARGE`) before the app's code runs; the checker accepts
+that. Real users are not affected, because the browser shrinks photos below 4 MB before sending.
+
 ## Variety test and the AI's daily limit (2026-10-30)
 
 Eight made-up invoices in very different styles (`test-invoices/variety/`, made by `scripts/make-variety-invoices.py`,

@@ -42,7 +42,11 @@ expectPolite('scan: no image sent', await call('POST', '/api/scan', { body: new 
 expectPolite('scan: text file renamed .jpg', await call('POST', '/api/scan', { body: imageForm(new TextEncoder().encode('hello, I am not a picture'), 'image/jpeg', 'x.jpg') }));
 expectPolite('scan: GIF is not accepted', await call('POST', '/api/scan', { body: imageForm(new TextEncoder().encode('GIF89a......'), 'image/gif', 'x.gif') }));
 const big = new Uint8Array(5 * 1024 * 1024); big.set(JPEG_HEAD);
-expectPolite('scan: 5 MB file is too big', await call('POST', '/api/scan', { body: imageForm(big, 'image/jpeg', 'big.jpg') }));
+// Too big: our own code answers 413 with a message. On Vercel the platform itself refuses a body above 4.5 MB
+// first (413 in plain text, "FUNCTION_PAYLOAD_TOO_LARGE"), so on the live site both forms count as correct.
+const bigRes = await call('POST', '/api/scan', { body: imageForm(big, 'image/jpeg', 'big.jpg') });
+if (bigRes.json) expectPolite('scan: 5 MB file is too big', bigRes, 413);
+else expectOk('scan: 5 MB file is too big (refused by the hosting platform)', bigRes.status === 413, `status ${bigRes.status}`);
 expectPolite('scan: empty file', await call('POST', '/api/scan', { body: imageForm(new Uint8Array(0), 'image/jpeg', 'empty.jpg') }));
 
 console.log('\n--- /api/invoices (list) ---');
