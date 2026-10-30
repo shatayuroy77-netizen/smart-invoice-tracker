@@ -1,0 +1,81 @@
+{
+  "invoice-A-clean.jpg": {
+    "vendor_name": "Shree Ganesh Oil & Spices",
+    "vendor_gstin": "19SGOSP7733M1ZB",
+    "invoice_number": "SGO-760",
+    "invoice_date": "2026-10-27",
+    "due_date": null,
+    "payment_terms_days": 30,
+    "line_items": [
+      {
+        "item_name": "Mustard Oil 1L Pouch",
+        "quantity": 60,
+        "unit": "pouch",
+        "unit_price": 190.0,
+        "line_total": 11400.0
+      },
+      {
+        "item_name": "Turmeric Powder 200g",
+        "quantity": 40,
+        "unit": "pkt",
+        "unit_price": 38.5,
+        "line_total": 1540.0
+      },
+      {
+        "item_name": "Cumin Seeds 100g",
+        "quantity": 30,
+        "unit": "pkt",
+        "unit_price": 61.0,
+        "line_total": 1830.0
+      }
+    ],
+    "subtotal": 14770.0,
+    "cgst": 369.25,
+    "sgst": 369.25,
+    "igst": 0,
+    "total_amount": 15508.5
+  },
+  "invoice-B-phone-photo.jpg": {
+    "vendor_name": "Mahavir Distributors",
+    "vendor_gstin": "10MHVDS5O12M1ZQ",
+    "invoice_number": "MD/611/26",
+    "invoice_date": "2026-10-05",
+    "due_date": "2026-11-04",
+    "payment_terms_days": null,
+    "line_items": [
+      {
+        "item_name": "Maggi 2-Minute Noodles Box",
+        "quantity": 5,
+        "unit": "box",
+        "unit_price": 740.0,
+        "line_total": 3700.0
+      },
+      {
+        "item_name": "Kissan Mixed Fruit Jam 500g",
+        "quantity": 24,
+        "unit": "btl",
+        "unit_price": 158.0,
+        "line_total": 3792.0
+      },
+      {
+        "item_name": "Quaker Oats 1kg",
+        "quantity": 10,
+        "unit": "pkt",
+        "unit_price": 190.0,
+        "line_total": 1900.0
+      },
+      {
+        "item_name": "Kelloggs Corn Flakes 500g",
+        "quantity": 12,
+        "unit": "pkt",
+        "unit_price": 212.0,
+        "line_total": 2544.0
+      }
+    ],
+    "subtotal": 11936.0,
+    "cgst": 0,
+    "sgst": 0,
+    "igst": 1432.32,
+    "total_amount": 13368.32
+  }
+}
