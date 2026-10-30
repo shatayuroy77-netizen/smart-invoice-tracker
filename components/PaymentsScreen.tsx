@@ -4,8 +4,9 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { dueLabel, formatDate, formatINR } from '@/lib/format';
-import type { PaymentRow, PaymentsSummary } from '@/lib/types';
+import type { CashflowWeekRow, PaymentRow, PaymentsSummary } from '@/lib/types';
 import { useApi } from '@/lib/use-api';
+import { CashflowChart } from './CashflowChart';
 import { Badge, btn, Card, EmptyState, ErrorBox, Loading } from './ui';
 
 type FilterId = 'all' | 'overdue' | '7' | '15' | '30';
@@ -35,7 +36,7 @@ function Tile(props: { label: string; amount: number; count: number; tone: 'red'
 }
 
 export function PaymentsScreen() {
-  const { data, error, loading, reload } = useApi<{ summary: PaymentsSummary; invoices: PaymentRow[] }>('/api/payments');
+  const { data, error, loading, reload } = useApi<{ summary: PaymentsSummary; invoices: PaymentRow[]; weekly: CashflowWeekRow[] }>('/api/payments');
   const [filter, setFilter] = useState<FilterId>('all');
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -92,6 +93,8 @@ export function PaymentsScreen() {
           <b>{formatINR(s.possible_duplicate_amount, true)}</b> of the unpaid amount belongs to possible duplicate invoices. Check them before paying.
         </div>
       )}
+
+      <CashflowChart weeks={data.weekly ?? []} />
 
       {actionError && <ErrorBox message={actionError} />}
 

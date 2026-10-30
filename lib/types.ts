@@ -117,3 +117,34 @@ export interface PriceItemSummary {
   unit: string;
   vendors_selling_it: number;
 }
+
+// One row of v_vendor_scorecard (database/06_vendor_scorecard_and_cashflow.sql).
+// The *_rank columns are null for vendors that have too little data to be ranked.
+export interface VendorScorecardRow {
+  vendor_id: string;
+  vendor_name: string;
+  invoices: number;
+  spend_before_tax: number;
+  price_comparisons: number; // how many repeat purchases the price trend rests on
+  avg_price_change_pct: number | null;
+  biggest_jump_pct: number | null;
+  price_jumps: number; // changes above 10%
+  shared_items: number; // items another vendor sells too
+  avg_pct_above_cheapest: number | null;
+  times_cheapest: number;
+  enough_trend_data: boolean;
+  enough_comparison_data: boolean;
+  price_rise_rank: number | null;
+  price_level_rank: number | null;
+}
+
+// One row of v_cashflow_weekly. week_no: -1 = overdue, 0..7 = the next 8 weeks, 8 = later.
+export interface CashflowWeekRow {
+  week_no: number;
+  starts_on: string | null;
+  ends_on: string | null;
+  invoices: number;
+  amount: number;
+  possible_duplicate_amount: number;
+  running_total: number;
+}

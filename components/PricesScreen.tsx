@@ -4,10 +4,11 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { formatDate, formatINR } from '@/lib/format';
-import type { PriceComparisonRow, PriceHistoryRow, PriceItemSummary, PriceJump } from '@/lib/types';
+import type { PriceComparisonRow, PriceHistoryRow, PriceItemSummary, PriceJump, VendorScorecardRow } from '@/lib/types';
 import { useApi } from '@/lib/use-api';
 import { PriceChart, type ChartSeries } from './PriceChart';
 import { Badge, btn, Card, EmptyState, ErrorBox, Loading } from './ui';
+import { VendorScorecard } from './VendorScorecard';
 
 function ItemDetail({ item, onBack }: { item: PriceItemSummary; onBack: () => void }) {
   const url = `/api/prices/item?key=${encodeURIComponent(item.item_key)}&unit=${encodeURIComponent(item.unit)}`;
@@ -98,7 +99,7 @@ function ItemDetail({ item, onBack }: { item: PriceItemSummary; onBack: () => vo
 }
 
 export function PricesScreen() {
-  const { data, error, reload } = useApi<{ jumps: PriceJump[]; items: PriceItemSummary[] }>('/api/prices');
+  const { data, error, reload } = useApi<{ jumps: PriceJump[]; items: PriceItemSummary[]; vendors: VendorScorecardRow[] }>('/api/prices');
   const [selected, setSelected] = useState<PriceItemSummary | null>(null);
   const [text, setText] = useState('');
 
@@ -141,6 +142,8 @@ export function PricesScreen() {
           </ul>
         )}
       </section>
+
+      <VendorScorecard vendors={data.vendors ?? []} />
 
       <section aria-label="Compare an item">
         <h2 className="mb-2 font-semibold">Compare an item</h2>

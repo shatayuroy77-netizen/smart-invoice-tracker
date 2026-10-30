@@ -18,6 +18,13 @@ invoice, let AI read it, check the fields, and save. The app then tells you **wh
   <img src="docs/screenshots/5-invoice-detail.png" width="19%" alt="Invoice detail">
 </p>
 
+Newer parts: week-by-week cash flow on the Payments tab, and the supplier scorecard on the Prices tab.
+
+<p>
+  <img src="docs/screenshots/6-cashflow.png" width="36%" alt="Money to pay, week by week">
+  <img src="docs/screenshots/7-scorecard.png" width="36%" alt="Supplier scorecard">
+</p>
+
 ## The problem
 
 In many small shops, staff re-type paper supplier invoices into Excel. That causes typing mistakes,
@@ -29,8 +36,8 @@ the same invoice paid twice, forgotten due dates, and no view of how supplier pr
 |---|---|
 | **Scan** | Photo of an invoice becomes vendor, GSTIN, invoice number, dates, line items, CGST / SGST / IGST and total. Staff check the fields and press Save. |
 | **Invoices** | Searchable list with filters: All, Unpaid, Overdue, Paid, Flagged. Open one to see items, taxes, warnings and the original photo. |
-| **Payments** | What is overdue and what falls due in the next 7, 15 and 30 days. One tap to mark an invoice as paid, with undo. |
-| **Prices** | Price alerts, a vendor-by-vendor comparison for any item, and a price-over-time chart. |
+| **Payments** | What is overdue and what falls due in the next 7, 15 and 30 days, a week-by-week cash-flow chart for the next 8 weeks (with a running total), and one tap to mark an invoice as paid, with undo. |
+| **Prices** | Price alerts, a **supplier scorecard** (who keeps raising prices, who charges more than the others), a vendor-by-vendor comparison for any item, and a price-over-time chart. |
 
 ### Automatic flags
 
@@ -63,7 +70,8 @@ the browser (live warnings) and on the server (final check before saving).
 
 ## The database (the analysis lives in SQL)
 
-All analysis is written as commented SQL views in [`database/04_views.sql`](database/04_views.sql),
+All analysis is written as commented SQL views in [`database/04_views.sql`](database/04_views.sql) and
+[`database/06_vendor_scorecard_and_cashflow.sql`](database/06_vendor_scorecard_and_cashflow.sql),
 so it can be read and reused without the app.
 
 | Object | Purpose |
@@ -73,10 +81,12 @@ so it can be read and reused without the app.
 | `v_purchase_lines`, `v_price_history`, `v_price_comparison` | Price analysis: previous price, change %, cheapest vendor |
 | `v_all_flags`, `v_invoice_list` | Everything the Invoices screen needs in one query |
 | `v_payments_due`, `v_payments_summary` | Overdue and 7 / 15 / 30 day buckets |
+| `v_vendor_scorecard` | One row per vendor: average price change on repeat purchases, price level against the cheapest vendor, and a rank. A vendor is only ranked when enough data stands behind the number (5 price changes, or 3 items shared with another vendor) |
+| `v_cashflow_weekly` | Unpaid money per week for the next 8 weeks, plus overdue and later, with a running total |
 | `save_invoice(p jsonb)` | Saves vendor, invoice and items atomically and refuses duplicates ([`05_save_invoice_and_storage.sql`](database/05_save_invoice_and_storage.sql)) |
 | `today_ist()` | Today's date in India, because the server clock is UTC |
 
-SQL used on purpose: window functions (`LAG`, `ROW_NUMBER`), conditional aggregates (`FILTER`), a self-join
+SQL used on purpose: window functions (`LAG`, `ROW_NUMBER`, `RANK`, running totals), conditional aggregates (`FILTER`), a self-join
 with a row comparison, regular expressions, `STRING_AGG`, and views built on top of views. For example, the price-jump rule is
 `LAG(unit_price) OVER (PARTITION BY vendor_id, item_key, unit ORDER BY invoice_date)` compared with `* 1.10`.
 
@@ -101,16 +111,17 @@ node scripts/test-checks.ts            # 15 tests for the invoice checks
 node scripts/test-scan.mjs             # AI reads two sample invoices, compared with known answers
 node --env-file=.env.local scripts/test-save.mjs   # scan, save, duplicate, photo, mark paid, undo
 node scripts/test-api-errors.mjs       # wrong and hostile input on every API route
+node scripts/test-analysis.mjs         # the cash-flow weeks and the supplier scorecard add up with the older views
 ```
 
-The last three need the app running (`npm run dev`).
+The last four need the app running (`npm run dev`).
 
 ## Run it yourself
 
 You need Node.js 24 or newer, a free Supabase project, and a Gemini API key.
 
 1. `npm install`
-2. In the Supabase SQL editor run the files in `database/` in order: `01`, `02` (fake data), `04`, `05`.
+2. In the Supabase SQL editor run the files in `database/` in order: `01`, `02` (fake data), `04`, `05`, `06`.
    (`03` is a set of check queries.)
 3. Copy `.env.example` to `.env.local` and fill in the four values. Use the **secret** key from
    Supabase (Project Settings, API Keys), never the publishable one.
@@ -123,7 +134,7 @@ To deploy, import the repository into Vercel, add the same four environment vari
 
 ```
 app/            pages (scan, invoices, payments, prices) and API routes (app/api)
-components/     the four screens, bottom navigation, price chart
+components/     the four screens, bottom navigation, price chart, supplier scorecard, cash-flow chart
 lib/            Gemini client, invoice checks, validation, formatting, server helpers
 database/       SQL: tables, fake data, views, save function
 scripts/        tests
@@ -137,4 +148,7 @@ test-invoices/  two made-up invoice images with the expected answers
 - The scan rate limit is kept in each server instance's memory, so it is a guard against accidents
   and cheap abuse, not a hard limit.
 - Only paid / unpaid is tracked, no partial payments.
+- The supplier scorecard compares prices by cleaned item name, so "Sugar 1kg" and "Sugar (1 kg)" are two items.
+  It does not adjust for inflation or convert units.
+- Not built yet: matching the invoices against the GST portal's GSTR-2B file (input tax credit at risk).
 - One shop only; a multi-shop version would add a `shop_id` and Row Level Security policies.

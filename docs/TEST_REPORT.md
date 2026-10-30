@@ -13,8 +13,9 @@ Supabase project with fake data only. Date of the run: 2026-10-30.
 | AI reads two sample invoices and is compared with the known answers | `node scripts/test-scan.mjs` |
 | Save flow end to end (scan, save, duplicate, photo, mark paid, undo, clean up) | `node --env-file=.env.local scripts/test-save.mjs` |
 | Wrong and hostile input on every API route | `node scripts/test-api-errors.mjs` (add `--rate-limit` to test the scan limit) |
+| Supplier scorecard and weekly cash flow add up with the older views | `node scripts/test-analysis.mjs` |
 
-The last three need the server running (`npm run dev` or `npm run start`).
+The last four need the server running (`npm run dev` or `npm run start`).
 
 ## Results
 
@@ -27,6 +28,29 @@ The last three need the server running (`npm run dev` or `npm run start`).
 | Wrong and hostile input | all checks pass: bad files, oversized and empty photos, bad ids, bad JSON, invalid fields, SQL-injection text in search and in item keys, scan rate limit (HTTP 429) |
 | Mobile layout (375 px wide) | no sideways scrolling on Scan, Invoices, Payments, Prices |
 | PWA | manifest valid (standalone, 3 icons, all load), apple icon present |
+
+## Added later: supplier scorecard and weekly cash flow (2026-10-30)
+
+Two new views, `v_vendor_scorecard` and `v_cashflow_weekly` ([`06_vendor_scorecard_and_cashflow.sql`](../database/06_vendor_scorecard_and_cashflow.sql)),
+checked with `node scripts/test-analysis.mjs` against the real API (18 / 18 checks pass), and all the older tests were run again (all pass).
+
+| Check | Result |
+|---|---|
+| The 10 cash-flow rows (overdue, 8 weeks, later) add up to the total unpaid amount of the Payments summary | equal to the paisa (₹4,68,695.85) |
+| Overdue row, invoice counts and duplicate money agree with the older view and the banner | equal |
+| Each week recounted from the plain list of unpaid invoices | all 10 weeks equal |
+| Running total never goes down and ends at the total unpaid amount | yes |
+| Only vendors with enough data are ranked (5 price changes, or 3 shared items) | yes, and ranked vendors come first |
+| Rank 1 has the highest average price change; ranks follow the order | yes |
+| Jump counts per vendor equal the price alerts shown on the same screen | yes |
+| Public (publishable) key reads `v_vendor_scorecard` | empty (RLS) |
+| Public key reads `v_cashflow_weekly` | ten rows of zeros and dates only (the calendar), no amounts, vendors or invoices |
+
+A design decision found while checking the numbers: some vendors share only one item with another vendor,
+so a percentage like "+14.9% above the cheapest" rests on a single item. The scorecard therefore shows the
+count behind every number, leaves suppliers with too little data out of the rankings, and mentions such a number
+only in the details line, marked as "too little data to rank". The screen shows two short lists (who raised prices the
+most, who charges more than the others), one line per supplier, with the details one tap away.
 
 ## Security checks
 
