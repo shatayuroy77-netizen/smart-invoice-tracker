@@ -2,7 +2,7 @@
 // Run:  node scripts/test-checks.ts
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { checkInvoice, type RawInvoice } from '../lib/invoice-checks.ts';
+import { checkInvoice, currencyKind, isRupee, normalizeCurrency, type RawInvoice } from '../lib/invoice-checks.ts';
 
 const expected = JSON.parse(readFileSync(new URL('../test-invoices/expected.json', import.meta.url), 'utf8'));
 const TODAY = '2026-10-29';
@@ -166,6 +166,103 @@ test("the AI's own 'unclear_fields' are passed on", () => {
   const raw = base('invoice-A-clean.jpg');
   raw.unclear_fields = ['vendor_gstin'];
   assert.ok(fields(checkInvoice(raw, { today: TODAY }).warnings).includes('unclear_fields'));
+});
+
+test('rupee spellings and "no currency printed" are all fine', () => {
+  for (const currency of ['INR', 'inr', 'Rs.', 'Rs', 'Rs/-', '₹', 'Rupees', 'Indian Rupee', 'रुपये', 'টাকা', null, '', '  ']) {
+    const raw = base('invoice-A-clean.jpg');
+    raw.currency = currency;
+    const { invoice, warnings } = checkInvoice(raw, { today: TODAY });
+    assert.ok(!fields(warnings).includes('currency'), `"${currency}" must not raise a currency problem`);
+    assert.ok(invoice.currency === 'INR' || invoice.currency === null);
+  }
+  const noField = base('invoice-A-clean.jpg'); // an answer without the field at all (older callers)
+  assert.deepEqual(fields(checkInvoice(noField, { today: TODAY }).warnings, 'error'), []);
+});
+
+test('an invoice in US dollars is a red error (Save is blocked) that names the currency', () => {
+  const raw = base('invoice-A-clean.jpg');
+  raw.currency = 'USD';
+  const { invoice, warnings } = checkInvoice(raw, { today: TODAY });
+  assert.equal(invoice.currency, 'USD');
+  const problem = warnings.find((w) => w.field === 'currency');
+  assert.equal(problem?.severity, 'error');
+  assert.ok(problem?.message.includes('USD'));
+});
+
+test('currency symbols are understood: "$" is USD, "€" is EUR, spaces and case do not matter', () => {
+  assert.equal(normalizeCurrency(' $ '), 'USD');
+  assert.equal(normalizeCurrency('€'), 'EUR');
+  assert.equal(normalizeCurrency(' usd '), 'USD');
+  assert.equal(normalizeCurrency('Rs.'), 'INR');
+  assert.equal(isRupee('USD'), false);
+  assert.equal(isRupee('EUR'), false);
+  assert.equal(isRupee('INR'), true);
+  assert.equal(isRupee(undefined), true);
+});
+
+test('a foreign invoice does not also get the misleading "tax does not add up" warning', () => {
+  const raw = base('invoice-A-clean.jpg');
+  raw.currency = 'USD';
+  raw.cgst = 0; // a US sales tax has no place in CGST/SGST/IGST ...
+  raw.sgst = 0;
+  raw.igst = 0; // ... so subtotal + tax can never reach the printed total
+  const ws = checkInvoice(raw, { today: TODAY }).warnings;
+  assert.ok(fields(ws).includes('currency'));
+  assert.ok(!fields(ws).includes('total_amount'));
+  // the same numbers on a rupee invoice are still caught
+  const rupee = base('invoice-A-clean.jpg');
+  rupee.cgst = 0;
+  rupee.sgst = 0;
+  rupee.igst = 0;
+  assert.ok(fields(checkInvoice(rupee, { today: TODAY }).warnings).includes('total_amount'));
+});
+
+test('currency is blocked only when we are SURE: known foreign codes and symbols are red, odd answers are only yellow', () => {
+  for (const sure of ['USD', 'usd', '$', 'US$', 'EUR', '€', 'GBP', '£', 'AED', 'SGD', 'AUD']) {
+    assert.equal(currencyKind(sure), 'foreign', `${sure} is foreign`);
+  }
+  for (const doubtful of ['XYZ', 'RUPEES ONLY ONE', 'dollar-ish', 'abcd', 'Z$']) {
+    assert.equal(currencyKind(doubtful), 'unclear', `${doubtful} is unclear`);
+  }
+  assert.equal(currencyKind(null), 'rupee');
+  assert.equal(currencyKind('Rs/-'), 'rupee');
+  // an unclear answer must NOT lock a rupee invoice out: a warning, never an error
+  const raw = base('invoice-A-clean.jpg');
+  raw.currency = 'XYZ';
+  const ws = checkInvoice(raw, { today: TODAY }).warnings.filter((w) => w.field === 'currency');
+  assert.equal(ws.length, 1);
+  assert.equal(ws[0].severity, 'warn');
+  assert.deepEqual(fields(checkInvoice(raw, { today: TODAY }).warnings, 'error'), []);
+});
+
+test('the red currency message tells staff what to do if the AI got it wrong', () => {
+  const raw = base('invoice-A-clean.jpg');
+  raw.currency = 'USD';
+  const message = checkInvoice(raw, { today: TODAY }).warnings.find((w) => w.field === 'currency')?.message ?? '';
+  assert.ok(message.includes('Type it myself'));
+});
+
+test('a due date before the invoice date is a red error (the database refuses it anyway)', () => {
+  const raw = base('invoice-B-phone-photo.jpg');
+  raw.due_date = '2026-09-01';
+  const problem = checkInvoice(raw, { today: TODAY }).warnings.find((w) => w.field === 'due_date');
+  assert.equal(problem?.severity, 'error');
+});
+
+test('negative amounts (credit notes, discount lines) are a red error, because the database refuses them', () => {
+  const discountLine = base('invoice-A-clean.jpg');
+  discountLine.line_items[0].unit_price = -50;
+  const a = checkInvoice(discountLine, { today: TODAY }).warnings;
+  assert.ok(a.some((w) => w.severity === 'error' && w.field === 'line_items[0]' && w.message.includes('negative')));
+
+  const creditNote = base('invoice-A-clean.jpg');
+  creditNote.total_amount = -15508.5;
+  const b = checkInvoice(creditNote, { today: TODAY }).warnings;
+  assert.ok(b.some((w) => w.severity === 'error' && w.field === 'total_amount' && w.message.includes('below zero')));
+
+  // normal invoices are untouched
+  assert.deepEqual(fields(checkInvoice(base('invoice-A-clean.jpg'), { today: TODAY }).warnings, 'error'), []);
 });
 
 console.log(`\nAll ${passed} tests passed.`);

@@ -85,6 +85,7 @@ expectPolite('save: data is not JSON', await call('POST', '/api/invoices', { bod
 expectPolite('save: empty vendor name', await call('POST', '/api/invoices', { body: saveForm({ ...valid, vendor_name: '   ' }) }), 400);
 expectPolite('save: no line items', await call('POST', '/api/invoices', { body: saveForm({ ...valid, line_items: [] }) }), 400);
 expectPolite('save: negative quantity', await call('POST', '/api/invoices', { body: saveForm({ ...valid, line_items: [{ ...valid.line_items[0], quantity: -3 }] }) }), 400);
+expectPolite('save: negative price (a credit note line)', await call('POST', '/api/invoices', { body: saveForm({ ...valid, line_items: [{ ...valid.line_items[0], unit_price: -5 }] }) }), 400);
 expectPolite('save: date in wrong format (DD-MM-YYYY)', await call('POST', '/api/invoices', { body: saveForm({ ...valid, invoice_date: '01-10-2026' }) }), 400);
 expectPolite('save: money as text', await call('POST', '/api/invoices', { body: saveForm({ ...valid, total_amount: 'lots' }) }), 400);
 expectPolite('save: absurd amount', await call('POST', '/api/invoices', { body: saveForm({ ...valid, total_amount: 1e15 }) }), 400);

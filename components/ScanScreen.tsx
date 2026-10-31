@@ -25,6 +25,7 @@ interface Form {
   due_date: string;
   dueNote: string; // e.g. "Calculated from the invoice terms (30 days)"
   terms: number | null;
+  currency: string | null; // read by the AI, not editable: an invoice that is not in rupees cannot be saved
   lines: LineForm[];
   subtotal: string;
   cgst: string;
@@ -76,6 +77,7 @@ function formFromScan(invoice: CleanInvoice, warnings: Warning[]): Form {
     due_date: invoice.due_date ? formatDate(invoice.due_date) : '',
     dueNote,
     terms: invoice.payment_terms_days,
+    currency: invoice.currency,
     lines: invoice.line_items.map((li) => ({
       id: crypto.randomUUID(),
       name: li.item_name,
@@ -102,6 +104,7 @@ function emptyForm(): Form {
     due_date: '',
     dueNote: '',
     terms: null,
+    currency: null, // typed by hand: the staff member is writing rupee amounts
     lines: [{ id: crypto.randomUUID(), name: '', qty: '', unit: '', price: '', total: '' }],
     subtotal: '',
     cgst: '',
@@ -119,6 +122,7 @@ function toRaw(form: Form): RawInvoice {
     invoice_date: toDate(form.invoice_date),
     due_date: toDate(form.due_date),
     payment_terms_days: form.terms,
+    currency: form.currency,
     line_items: form.lines.map((l) => ({
       item_name: l.name,
       quantity: toNum(l.qty),
@@ -345,6 +349,7 @@ export function ScanScreen() {
       invoice_date: invoice.invoice_date,
       due_date: invoice.due_date,
       payment_terms_days: invoice.payment_terms_days,
+      currency: invoice.currency,
       line_items: invoice.line_items,
       subtotal: invoice.subtotal,
       cgst: invoice.cgst,

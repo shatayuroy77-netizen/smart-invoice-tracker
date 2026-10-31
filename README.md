@@ -34,7 +34,7 @@ the same invoice paid twice, forgotten due dates, and no view of how supplier pr
 
 | Screen | What you get |
 |---|---|
-| **Scan** | Photo of an invoice becomes vendor, GSTIN, invoice number, dates, line items, CGST / SGST / IGST and total. Staff check the fields and press Save. If the AI is not available, or cannot read the paper, the invoice can be typed in by hand with the same checks. |
+| **Scan** | Photo of an invoice becomes vendor, GSTIN, invoice number, dates, line items, CGST / SGST / IGST and total. Staff check the fields and press Save. If the AI is not available, or cannot read the paper, the invoice can be typed in by hand with the same checks. An invoice in another currency (for example US dollars) is refused, because the app only handles rupees. |
 | **Invoices** | Searchable list with filters: All, Unpaid, Overdue, Paid, Flagged. Open one to see items, taxes, warnings and the original photo. |
 | **Payments** | What is overdue and what falls due in the next 7, 15 and 30 days, a week-by-week cash-flow chart for the next 8 weeks (with a running total), and one tap to mark an invoice as paid, with undo. |
 | **Prices** | Price alerts, a **supplier scorecard** (who keeps raising prices, who charges more than the others), a vendor-by-vendor comparison for any item, and a price-over-time chart. |
@@ -107,17 +107,18 @@ change data with only the public key.
 ```bash
 npx tsc --noEmit                       # types
 npm run lint                           # lint
-node scripts/test-checks.ts            # 15 tests for the invoice checks
+node scripts/test-checks.ts            # 27 tests for the invoice checks
 node scripts/test-scan.mjs             # AI reads two sample invoices, compared with known answers
 node --env-file=.env.local scripts/test-save.mjs   # scan, save, duplicate, photo, mark paid, undo
 node scripts/test-api-errors.mjs       # wrong and hostile input on every API route
 node scripts/test-analysis.mjs         # the cash-flow weeks and the supplier scorecard add up with the older views
 node scripts/test-gemini-errors.ts     # how the app reacts to Gemini limit / busy answers (fake Google, no quota used)
 node scripts/test-variety.mjs          # 8 differently styled invoices compared with the right answers (8 AI reads)
+node --env-file=.env.local scripts/test-currency.mjs   # a US dollar invoice cannot be saved, a rupee or unclear one can (2 AI reads)
 ```
 
 The tests that talk to the app need it running (`npm run dev`). Every AI read counts against the Gemini key's free
-daily limit, so run `test-scan`, `test-save` and `test-variety` sparingly.
+daily limit, so run `test-scan`, `test-save`, `test-currency` and `test-variety` sparingly.
 
 ## Run it yourself
 
@@ -151,6 +152,10 @@ test-invoices/  made-up invoice images with the expected answers (two originals,
 - The scan rate limit is kept in each server instance's memory, so it is a guard against accidents
   and cheap abuse, not a hard limit.
 - Only paid / unpaid is tracked, no partial payments.
+- **Rupees only.** The AI reports the currency it sees. A currency the app is sure about (USD, EUR, AED, `$` ...) blocks
+  Save; an odd or unknown answer only gives a warning, so a real rupee invoice is never locked out by a guess. An invoice
+  with no currency sign at all is treated as rupees, so a foreign invoice with plain numbers would get through.
+- Credit notes and discount lines with negative amounts are not supported; the screen says so before Save.
 - Fields the AI cannot find: a missing unit becomes "pcs" and a missing invoice number becomes a `NO-NUMBER-date-total`
   reference, both with a warning. A missing vendor name, invoice date, total, or an item's name, quantity or price
   must be typed before saving. Missing GSTIN, due date, taxes and sub total are only warnings.

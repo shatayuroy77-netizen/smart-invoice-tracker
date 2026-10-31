@@ -1,6 +1,7 @@
 // The rules an invoice must follow before it may be saved. The screen checks the same things,
 // but the server never trusts the screen: it re-checks everything here.
 import { z } from 'zod';
+import { currencyKind } from './invoice-checks';
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Dates must be YYYY-MM-DD');
 const money = z.number().min(0).max(1_000_000_000);
@@ -12,6 +13,16 @@ export const SaveInvoiceSchema = z.object({
   invoice_date: isoDate,
   due_date: isoDate.nullable(),
   payment_terms_days: z.number().int().min(0).max(365).nullable(),
+  // The Scan screen already blocks an invoice in a clearly foreign currency; the server refuses it too, in case
+  // the screen is bypassed. Same rule as the screen: only a currency we are SURE is not rupees is refused.
+  // Not sent (or null) means "no currency printed", which is treated as rupees.
+  currency: z
+    .string()
+    .trim()
+    .max(60)
+    .nullable()
+    .optional()
+    .refine((value) => currencyKind(value) !== 'foreign', { message: 'This app only handles invoices in rupees. This invoice is in another currency.' }),
   line_items: z
     .array(
       z.object({

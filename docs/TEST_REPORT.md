@@ -16,6 +16,7 @@ Supabase project with fake data only. Date of the run: 2026-10-30.
 | Supplier scorecard and weekly cash flow add up with the older views | `node scripts/test-analysis.mjs` |
 | How the app reacts when Gemini says "limit used up" or "busy" (fake Google, no quota used) | `node scripts/test-gemini-errors.ts` |
 | Eight differently styled invoices compared with the right answers (uses the daily AI limit, 8 reads) | `node scripts/test-variety.mjs` |
+| An invoice in US dollars is blocked, a rupee invoice is not (2 AI reads, nothing is saved) | `node scripts/test-currency.mjs` |
 
 The last four need the server running (`npm run dev` or `npm run start`).
 
@@ -128,7 +129,43 @@ Things this showed, and what was changed:
 3. **Every test that scans uses the same free limit as the live app.** The live demo can therefore only read about 20
    photos a day in total. For real use a paid key is needed.
 
+## Found by real use: an invoice in US dollars (2026-10-31)
+
+A made-up US invoice (`test-invoices/foreign/usd-invoice.jpg`: dollars, an 8% sales tax, no GSTIN, no unit column,
+dated 2023) was scanned. The AI read every field correctly, but the app had no idea it was not rupees: it would have
+saved "$1,895.40" as "Rs 1,895.40", put the 8% tax nowhere (the totals then looked misread) and added a three-year-old
+"overdue" invoice to the live demo's totals.
+
+Fix: the AI also reports the currency (`currency`, for example `INR` or `USD`). The app **blocks only when it is
+sure**: a known foreign code or symbol (USD, EUR, AED, `$`, `€` ...) is a red error and the server refuses it too.
+A rupee spelling (INR, Rs, Rs/-, Rupees, a Hindi or Bengali word) or no currency at all is fine, because most Indian
+invoices show plain numbers. An odd or unknown answer only gives a yellow warning, so a real rupee invoice is never locked
+out by a guess; the red message also says what to do if the AI got it wrong (new photo, or "Type it myself"). For a
+foreign invoice the misleading "tax does not add up" warning is left out, because the currency error already explains
+the real problem.
+
+Two more things were made visible on the screen in the same change, because the database refuses them and staff
+would otherwise only find out after pressing Save: a **due date before the invoice date**, and **negative amounts**
+(credit notes, discount lines) are now red errors on the screen. The server also refuses a negative price (checked).
+
+| Check | Result |
+|---|---|
+| Invoice-check unit tests (now 27: rupee spellings incl. Hindi and Bengali, `$` and `€`, dollars blocked, unclear only warned, due date, negative amounts) | 27 / 27 pass |
+| Real AI on the dollar invoice | currency `USD`, red error, Save blocked, rest read correctly (vendor, number, total) |
+| Real AI on a rupee invoice | currency `INR`, no error, can still be saved |
+| Server asked to save with `USD`, `$` or `EUR` | refused with HTTP 400 each time, no invoice created |
+| Server asked to save with an unclear currency (`XYZ`) | accepted (one test invoice saved and removed again) |
+| Server asked to save a negative price | refused with HTTP 400 |
+| Scan screen in a real browser (phone width), five cases | rupee invoice: Save open; unclear `XYZ`: Save open with a yellow note; Hindi "रुपये": Save open; due before invoice date: red, Save disabled; negative amounts: red, Save disabled |
+| All older tests again (save flow, AI reading, wrong input, analysis, fake-Google) | all pass |
+
 ## Known limits (not bugs)
+
+- The currency guard is not complete: if an invoice shows no currency sign or word at all, it is treated as rupees.
+  A "use ₹ only" rule can only be enforced as well as the AI can read the currency. In the other direction, if the AI
+  wrongly reports a foreign currency on a rupee invoice (for example because of a note about a dollar wire), Save is
+  blocked and the currency cannot be edited on the form; the way out is a new photo or "Type it myself".
+- Credit notes (negative amounts) are not supported in this version.
 
 - The scan rate limit lives in the memory of one server process, so on Vercel it is per instance. That is
   enough to stop accidents and cheap abuse; a shared store would be needed for a hard limit.

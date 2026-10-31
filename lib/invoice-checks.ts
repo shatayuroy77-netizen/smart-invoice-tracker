@@ -21,6 +21,7 @@ export interface RawInvoice {
   invoice_date: string | null; // YYYY-MM-DD
   due_date: string | null; // YYYY-MM-DD, only if printed on the invoice
   payment_terms_days: number | null; // e.g. "Net 30 days" -> 30
+  currency?: string | null; // what the AI saw: "INR", "USD"... null when no currency is printed
   line_items: RawLineItem[];
   subtotal: number | null;
   cgst: number | null;
@@ -38,6 +39,7 @@ export interface CleanInvoice {
   due_date: string | null;
   due_date_source: 'printed' | 'calculated_from_terms' | null;
   payment_terms_days: number | null;
+  currency: string | null; // cleaned code: "INR" for rupees, another code (for example "USD") makes the invoice unsavable
   line_items: {
     item_name: string;
     quantity: number | null;
@@ -66,6 +68,66 @@ export const GSTIN_PATTERN = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
 // Many invoices (and almost every AI-made sample) have no separate unit column. That must not stop
 // staff from saving, so a missing unit becomes this one, with a "please check" warning.
 export const DEFAULT_UNIT = 'pcs';
+
+// This app handles RUPEE invoices only (GST, lakh formatting, Rs everywhere). An invoice in dollars would be
+// saved with the wrong meaning ("$1,895" shown as "Rs 1,895") and would spoil the totals and the price
+// comparisons. So the AI also reports the currency it sees.
+//
+// We only BLOCK when we are sure it is a foreign currency. There are three outcomes:
+//   'rupee'   : INR, a rupee spelling (Rs, Rs/-, Rupees, a Hindi or Bengali word), or nothing printed at all
+//               (most Indian invoices show plain numbers)                                  -> fine
+//   'foreign' : a currency we know (USD, EUR, AED ...) or its symbol ($, €, £)               -> red error, no Save
+//   'unclear' : anything else (an odd word, an unknown 3-letter code)                       -> yellow warning only
+// Blocking on a guess would lock a real rupee invoice out, so a doubtful answer only asks staff to look.
+const CURRENCY_ALIASES: Record<string, string> = {
+  '₹': 'INR',
+  RS: 'INR',
+  RUP: 'INR',
+  RUPEE: 'INR',
+  RUPEES: 'INR',
+  INDIANRUPEE: 'INR',
+  INDIANRUPEES: 'INR',
+  'रुपये': 'INR',
+  'रुपया': 'INR',
+  'रु': 'INR',
+  'रूपये': 'INR',
+  'টাকা': 'INR',
+  'রুপি': 'INR',
+  $: 'USD',
+  'US$': 'USD',
+  USDOLLAR: 'USD',
+  USDOLLARS: 'USD',
+  '€': 'EUR',
+  '£': 'GBP',
+};
+
+// Codes of the currencies we recognise as "clearly not rupees". Not a complete list on purpose:
+// a 3-letter code that is not here only gives a warning.
+const FOREIGN_CODES = new Set([
+  'USD', 'EUR', 'GBP', 'AED', 'SAR', 'QAR', 'KWD', 'BHD', 'OMR', 'SGD', 'HKD', 'AUD', 'CAD', 'NZD', 'JPY', 'CNY',
+  'CHF', 'SEK', 'NOK', 'DKK', 'ZAR', 'MYR', 'THB', 'IDR', 'PHP', 'VND', 'KRW', 'PKR', 'BDT', 'LKR', 'NPR', 'RUB',
+  'TRY', 'BRL', 'MXN', 'EGP', 'ILS',
+]);
+
+export type CurrencyKind = 'rupee' | 'foreign' | 'unclear';
+
+// "Rs." -> "INR", "Rs/-" -> "INR", "$" -> "USD", " usd " -> "USD", "" or null -> null (nothing printed)
+export function normalizeCurrency(value: string | null | undefined): string | null {
+  const key = (value ?? '').toUpperCase().replace(/[\s./-]/g, '');
+  if (!key) return null;
+  return CURRENCY_ALIASES[key] ?? key;
+}
+
+export function currencyKind(value: string | null | undefined): CurrencyKind {
+  const code = normalizeCurrency(value);
+  if (code === null || code === 'INR') return 'rupee';
+  return FOREIGN_CODES.has(code) ? 'foreign' : 'unclear';
+}
+
+// true for rupees AND for "no currency printed"
+export function isRupee(value: string | null | undefined): boolean {
+  return currencyKind(value) === 'rupee';
+}
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
@@ -101,6 +163,25 @@ export function checkInvoice(
 
   if (!vendor_name) warnings.push({ severity: 'error', field: 'vendor_name', message: 'Vendor name was not found. Please type it.' });
 
+  // A foreign-currency invoice cannot be saved (see the note at CURRENCY_ALIASES): a red error, Save stays blocked.
+  // An unclear currency only asks staff to look.
+  const currency = normalizeCurrency(raw.currency)?.slice(0, 30) ?? null;
+  const currencyType = currencyKind(currency);
+  const foreignCurrency = currencyType === 'foreign';
+  if (foreignCurrency) {
+    warnings.push({
+      severity: 'error',
+      field: 'currency',
+      message: `This invoice is in ${currency}, not rupees. This app only handles rupee invoices, so it cannot be saved here. If the invoice really is in rupees, take a new photo or use "Type it myself".`,
+    });
+  } else if (currencyType === 'unclear') {
+    warnings.push({
+      severity: 'warn',
+      field: 'currency',
+      message: `The AI saw the currency "${currency}" and could not tell whether it is rupees. This app only handles rupees, so please check the invoice is in rupees.`,
+    });
+  }
+
   if (vendor_gstin && !GSTIN_PATTERN.test(vendor_gstin)) {
     warnings.push({
       severity: 'warn',
@@ -134,7 +215,9 @@ export function checkInvoice(
   if (due_date) {
     due_date_source = 'printed';
     if (invoice_date && due_date < invoice_date) {
-      warnings.push({ severity: 'warn', field: 'due_date', message: 'Due date is before the invoice date. Please check both dates.' });
+      // An error, not a warning: the database refuses it (a CHECK rule), so Save would fail anyway.
+      // Better to say so here, where staff can fix it, than after they press Save.
+      warnings.push({ severity: 'error', field: 'due_date', message: 'Due date is before the invoice date, so it cannot be saved. Please correct one of the two dates.' });
     }
   } else if (invoice_date && raw.payment_terms_days != null && raw.payment_terms_days >= 0) {
     due_date = addDays(invoice_date, Math.round(raw.payment_terms_days));
@@ -181,6 +264,15 @@ export function checkInvoice(
     }
     if (li.unit_price == null) {
       warnings.push({ severity: 'error', field, message: `Line ${i + 1} (${li.item_name}): price is missing.` });
+    }
+    // The database only takes amounts of zero or more, so a negative price or line amount (a discount line,
+    // a credit note) would be refused at Save. Say so here instead.
+    if ((li.unit_price ?? 0) < 0 || (li.line_total ?? 0) < 0) {
+      warnings.push({
+        severity: 'error',
+        field,
+        message: `Line ${i + 1} (${li.item_name}): a negative amount (a discount line or a credit note) cannot be saved in this version.`,
+      });
     }
     // Fill a missing line total from quantity x price
     if (li.line_total == null && li.quantity != null && li.unit_price != null) {
@@ -234,14 +326,25 @@ export function checkInvoice(
     }
   } else if (subtotal != null) {
     const expectedTotal = round2(subtotal + cgst + sgst + igst);
-    // invoices are often rounded to the nearest rupee, so allow a difference of up to Rs 1.50
-    if (Math.abs(total_amount - expectedTotal) > 1.5) {
+    // invoices are often rounded to the nearest rupee, so allow a difference of up to Rs 1.50.
+    // Not for a foreign invoice: its tax (for example a US sales tax) has no place in CGST/SGST/IGST, so
+    // "a number may be misread" would be misleading. The currency error already explains the real problem.
+    if (!foreignCurrency && Math.abs(total_amount - expectedTotal) > 1.5) {
       warnings.push({
         severity: 'warn',
         field: 'total_amount',
         message: `Sub total ${subtotal} + taxes ${round2(cgst + sgst + igst)} = ${expectedTotal}, but the invoice total says ${total_amount}. A number may be misread.`,
       });
     }
+  }
+
+  // ---- negative amounts (credit notes) ------------------------------------
+  if ([subtotal, cgst, sgst, igst, total_amount].some((n) => n != null && n < 0)) {
+    warnings.push({
+      severity: 'error',
+      field: 'total_amount',
+      message: 'An amount below zero (for example a credit note) cannot be saved in this version.',
+    });
   }
 
   // ---- no invoice number ------------------------------------------------
@@ -279,6 +382,7 @@ export function checkInvoice(
       due_date,
       due_date_source,
       payment_terms_days: raw.payment_terms_days != null && raw.payment_terms_days >= 0 ? Math.round(raw.payment_terms_days) : null,
+      currency,
       line_items,
       subtotal,
       cgst,

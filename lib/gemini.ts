@@ -32,6 +32,7 @@ const RESPONSE_SCHEMA = {
     invoice_date: nullableString,
     due_date: nullableString,
     payment_terms_days: nullableNumber,
+    currency: nullableString,
     line_items: {
       type: 'ARRAY',
       items: {
@@ -60,6 +61,7 @@ const RESPONSE_SCHEMA = {
     'invoice_date',
     'due_date',
     'payment_terms_days',
+    'currency',
     'line_items',
     'subtotal',
     'cgst',
@@ -78,6 +80,7 @@ const RawInvoiceSchema = z.object({
   invoice_date: z.string().nullable(),
   due_date: z.string().nullable(),
   payment_terms_days: z.number().nullable(),
+  currency: z.string().nullable().default(null), // an answer without this field is read as "no currency printed"
   line_items: z.array(
     z.object({
       item_name: z.string(),
@@ -111,6 +114,10 @@ DATES
 - Output every date as YYYY-MM-DD.
 - due_date: only if a due date is printed. Do not calculate it.
 - payment_terms_days: a number if the invoice states terms like "Net 30 days" or "payment within 15 days", otherwise null.
+
+CURRENCY
+- currency: the 3-letter code of the currency the amounts are written in. Use INR for rupees (the sign ₹, "Rs", "Rs.", "INR" or the word "Rupees"), USD for "$" or "US dollars", EUR for "€", GBP for "£", and so on for others.
+- If no currency sign or currency word is printed anywhere on the invoice, use null. Do NOT guess the currency from the language, the address or the country.
 
 NUMBERS
 - Plain numbers only: no currency symbols, no commas (1,23,456.50 becomes 123456.5).
